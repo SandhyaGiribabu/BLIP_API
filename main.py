@@ -1,14 +1,24 @@
-from typing import Optional
+from fastapi import FastAPI, UploadFile, File
+from transformers import AutoProcessor, AutoModelForVision2Seq
+from PIL import Image
+import torch
+import io
 
-from fastapi import FastAPI
+app = FastAPI(title="BLIP Image Captioning API")
 
-app = FastAPI()
+# Load model once at startup
+processor = AutoProcessor.from_pretrained("Salesforce/blip-image-captioning-large")
+model = AutoModelForVision2Seq.from_pretrained("Salesforce/blip-image-captioning-large")
 
+@app.post("/generate_caption/")
+async def generate_caption(file: UploadFile = File(...)):
+    # Read image file
+    image_bytes = await file.read()
+    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
+    # Generate caption
+    inputs = processor(images=image, return_tensors="pt")
+    output_ids = model.generate(**inputs, max_length=50)
+    caption = processor.batch_decode(output_ids, skip_special_tokens=True)[0]
 
-@app.get("/items/{item_id}")
-def read_item(item_id: int, q: Optional[str] = None):
-    return {"item_id": item_id, "q": q}
+    return {"caption": caption}
